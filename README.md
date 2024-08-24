@@ -55,6 +55,8 @@ Before installing Blender and the add-on, ensure that you meet the following req
 3. **Using the Add-on**:
     - Access the add-on from the `View3D` panel under the `Shader Generator` tab.
     - Configure your shaders and apply them to your scientific data visualizations.
+  
+![1](https://github.com/user-attachments/assets/53f7eafa-34c7-49f7-8c41-68d4c20dd8da)
 
 ## Usage
 
