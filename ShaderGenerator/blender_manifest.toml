@@ -1,0 +1,25 @@
+schema_version = "1.0.0"
+id = "ShaderGenerator"
+version = "1.0.0"
+name = "Shader Generator"
+author = "José Marín"
+tagline = "Scientific ColorRamp Shader Generator for Blender"
+description = """
+v.1.0.0
+
+This add-on enhances Blender's material creation capabilities by providing a tool for generating shaders based on scientific colormaps. Key features include:
+
+- Create shaders using predefined scientific colormaps (viridis, plasma, inferno, etc.)
+- Custom ColorRamp creation and management
+- Multiple interpolation options for smooth color transitions
+- Apply shaders to all mesh objects or selected ones
+- Save and load custom ColorRamps
+- Real-time updates for shader customization
+- Ideal for scientific visualization and data representation in Blender
+- User-friendly interface for easy shader configuration and application
+"""
+blender_version_min = "4.2.0"
+license = ["free licensing"]
+tags = ["Shader", "Scientific", "Visualization", "ColorRamp", "Material"]
+type = "add-on"
+maintainer = "José Marín <marinfarinajose@gmail.com>"
