@@ -1,5 +1,8 @@
 import bpy
 import json
+import os
+import colorsys
+from mathutils import Color
 from bpy.props import (
     EnumProperty,
     StringProperty,
@@ -9,32 +12,63 @@ from bpy.props import (
     CollectionProperty
 )
 from bpy.types import Operator, Panel, PropertyGroup
+import numpy as np
+from scipy import interpolate
+import logging
+
+# Configurar el logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 bl_info = {
     "name": "Shader Generator",
     "author": "José Marín",
-    "version": (1, 0, 0),
+    "version": (2, 0, 0),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Shader Generator",
     "description": "Create materials with scientific colormaps and custom ColorRamps",
     "category": "Material",
 }
 
-# Definición de colormaps científicos
-COLORMAPS = {
-    'viridis': [(68, 1, 84), (72, 40, 120), (62, 74, 137), (49, 104, 142), (38, 130, 142), (31, 158, 137), (53, 183, 121), (109, 205, 89), (180, 222, 44), (253, 231, 37)],
-    'plasma': [(13, 8, 135), (75, 3, 161), (125, 3, 168), (168, 4, 168), (203, 11, 157), (231, 41, 138), (251, 85, 108), (254, 136, 68), (243, 188, 40), (240, 249, 33)],
-    'inferno': [(0, 0, 4), (40, 11, 84), (101, 21, 110), (159, 42, 99), (212, 72, 66), (245, 125, 21), (250, 193, 39), (252, 255, 164)],
-    'magma': [(0, 0, 4), (28, 16, 68), (79, 47, 101), (129, 63, 109), (181, 82, 113), (229, 107, 97), (251, 170, 96), (253, 239, 154)],
-    'cividis': [(0, 32, 76), (0, 42, 102), (0, 52, 110), (9, 64, 121), (25, 79, 127), (49, 96, 130), (77, 114, 132), (108, 133, 133), (142, 151, 136), (178, 170, 140), (217, 189, 143), (254, 212, 146)],
-    'jet': [(0, 0, 143), (0, 0, 255), (0, 127, 255), (0, 255, 255), (127, 255, 127), (255, 255, 0), (255, 127, 0), (255, 0, 0), (127, 0, 0)],
-    'rainbow': [(150, 0, 90), (0, 0, 200), (0, 25, 255), (0, 152, 255), (44, 255, 150), (151, 255, 0), (255, 234, 0), (255, 111, 0), (255, 0, 0)],
-    'turbo': [(48, 18, 59), (86, 67, 140), (66, 110, 193), (51, 150, 211), (53, 183, 200), (80, 211, 163), (133, 231, 109), (202, 237, 56), (253, 217, 0), (249, 168, 0), (227, 112, 1), (186, 56, 0), (131, 21, 13)],
-    'coolwarm': [(59, 76, 192), (124, 159, 249), (192, 212, 245), (242, 241, 239), (245, 210, 193), (245, 156, 126), (180, 37, 23)],
-    'spectral': [(158, 1, 66), (213, 62, 79), (244, 109, 67), (253, 174, 97), (254, 224, 139), (255, 255, 191), (230, 245, 152), (171, 221, 164), (102, 194, 165), (50, 136, 189), (94, 79, 162)],
-    'RdYlBu': [(165, 0, 38), (215, 48, 39), (244, 109, 67), (253, 174, 97), (254, 224, 144), (255, 255, 191), (224, 243, 248), (171, 217, 233), (116, 173, 209), (69, 117, 180), (49, 54, 149)],
-    'seismic': [(0, 0, 76), (0, 0, 253), (255, 255, 255), (253, 0, 0), (128, 0, 0)],
-}
+def load_colormaps_from_json(filepath):
+    with open(filepath, 'r') as f:
+        data = json.load(f)
+    
+    colormaps = {}
+    for colormap in data:
+        name = colormap['Name']
+        rgb_points = colormap['RGBPoints']
+        colors = []
+        for i in range(0, len(rgb_points), 4):
+            position = rgb_points[i]
+            r, g, b = rgb_points[i+1:i+4]
+            colors.append({
+                'position': position,
+                'color': (r, g, b)
+            })
+        
+        min_pos = min(color['position'] for color in colors)
+        max_pos = max(color['position'] for color in colors)
+        if min_pos != 0 or max_pos != 1:
+            for color in colors:
+                color['position'] = (color['position'] - min_pos) / (max_pos - min_pos)
+        
+        colormaps[name] = {
+            'colors': colors,
+            'nan_color': tuple(colormap.get('NanColor', (1, 1, 1))),
+            'color_space': colormap.get('ColorSpace', 'RGB')
+        }
+    return colormaps
+
+addon_directory = os.path.dirname(os.path.realpath(__file__))
+colors_filepath = os.path.join(addon_directory, 'colors.json')
+COLORMAPS = load_colormaps_from_json(colors_filepath)
+
+def get_colormap_items(self, context):
+    items = [(name, name, "") for name in COLORMAPS.keys()]
+    if context.scene.custom_colorramp:
+        items.append(("CUSTOM", "Custom", "Use custom ColorRamp"))
+    return items
 
 INTERPOLATION_OPTIONS = [
     ('CONSTANT', "Constant", "No interpolation"),
@@ -43,7 +77,6 @@ INTERPOLATION_OPTIONS = [
     ('CARDINAL', "Cardinal", "Cardinal interpolation"),
     ('B_SPLINE', "B-Spline", "B-Spline interpolation"),
 ]
-
 
 class ColorRampColor(PropertyGroup):
     color: FloatVectorProperty(
@@ -62,7 +95,6 @@ class ColorRampColor(PropertyGroup):
         description="Position of the color stop"
     )
 
-
 class COLORRAMP_OT_add_color(Operator):
     bl_idname = "colorramp.add_color"
     bl_label = "Add Color"
@@ -75,7 +107,6 @@ class COLORRAMP_OT_add_color(Operator):
         new_color.position = len(custom_ramp) / (len(custom_ramp) + 1)
         return {'FINISHED'}
 
-
 class COLORRAMP_OT_remove_color(Operator):
     bl_idname = "colorramp.remove_color"
     bl_label = "Remove Color"
@@ -87,7 +118,6 @@ class COLORRAMP_OT_remove_color(Operator):
         if len(custom_ramp) > 2:
             custom_ramp.remove(len(custom_ramp) - 1)
         return {'FINISHED'}
-
 
 class COLORRAMP_OT_save_custom(Operator):
     bl_idname = "colorramp.save_custom"
@@ -111,7 +141,6 @@ class COLORRAMP_OT_save_custom(Operator):
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
 
-
 class COLORRAMP_OT_load_custom(Operator):
     bl_idname = "colorramp.load_custom"
     bl_label = "Load Custom ColorRamp"
@@ -128,7 +157,6 @@ class COLORRAMP_OT_load_custom(Operator):
         custom_ramp.clear()
         for item in data:
             new_color = custom_ramp.add()
-            # Solo tomamos RGB, ignoramos Alpha
             new_color.color = item['color'][:3]
             new_color.position = item['position']
 
@@ -139,8 +167,76 @@ class COLORRAMP_OT_load_custom(Operator):
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
 
+class COLORRAMP_OT_import_json(Operator):
+    bl_idname = "colorramp.import_json"
+    bl_label = "Import JSON Colormaps"
+    bl_description = "Import colormaps from a Paraview JSON file"
+    bl_options = {'REGISTER', 'UNDO'}
 
-def create_colormap_material(colormap_name, interpolation, custom_colormap=None):
+    filepath: StringProperty(
+        name="File Path",
+        description="Path to the JSON file",
+        default="",
+        maxlen=1024,
+        subtype='FILE_PATH',
+    )
+
+    def execute(self, context):
+        if not self.filepath:
+            self.report({'ERROR'}, "No file selected")
+            return {'CANCELLED'}
+
+        try:
+            new_colormaps = load_colormaps_from_json(self.filepath)
+            COLORMAPS.update(new_colormaps)
+            self.report({'INFO'}, f"Successfully imported {len(new_colormaps)} colormaps")
+            return {'FINISHED'}
+        except Exception as e:
+            self.report({'ERROR'}, f"Error importing colormaps: {str(e)}")
+            return {'CANCELLED'}
+
+    def invoke(self, context, event):
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+
+def interpolate_colormap(colors, num_points=32):
+    positions = [color['position'] for color in colors]
+    rgb_colors = [color['color'] for color in colors]
+    
+    if positions[0] != 0:
+        positions.insert(0, 0)
+        rgb_colors.insert(0, rgb_colors[0])
+    if positions[-1] != 1:
+        positions.append(1)
+        rgb_colors.append(rgb_colors[-1])
+    
+    r_interp = interpolate.interp1d(positions, [c[0] for c in rgb_colors], bounds_error=False, fill_value="extrapolate")
+    g_interp = interpolate.interp1d(positions, [c[1] for c in rgb_colors], bounds_error=False, fill_value="extrapolate")
+    b_interp = interpolate.interp1d(positions, [c[2] for c in rgb_colors], bounds_error=False, fill_value="extrapolate")
+    
+    new_positions = np.linspace(0, 1, num_points)
+    
+    new_colors = []
+    for pos in new_positions:
+        new_colors.append({
+            'position': pos,
+            'color': (float(r_interp(pos)), float(g_interp(pos)), float(b_interp(pos)))
+        })
+    
+    return new_colors
+
+def get_color_range(obj):
+    if obj.type != 'MESH' or 'Col' not in obj.data.attributes:
+        return (0, 0, 0), (1, 1, 1)
+    
+    colors = [data.color for data in obj.data.attributes['Col'].data]
+    min_color = tuple(min(c[i] for c in colors) for i in range(3))
+    max_color = tuple(max(c[i] for c in colors) for i in range(3))
+    return min_color, max_color
+
+def create_colormap_material(colormap_name, interpolation, gamma, custom_colormap=None, color_range=None, normalization='AUTO'):
+    logger.info("Creando material con colormap: %s", colormap_name)
+    
     mat = bpy.data.materials.new(name=f"Shader_Generator_{colormap_name}")
     mat.use_nodes = True
     nodes = mat.node_tree.nodes
@@ -150,37 +246,95 @@ def create_colormap_material(colormap_name, interpolation, custom_colormap=None)
 
     node_attrib = nodes.new(type='ShaderNodeAttribute')
     node_attrib.attribute_name = "Col"
+    node_attrib.location = (-1200, 0)
 
-    node_ramp = nodes.new(type='ShaderNodeValToRGB')
-    node_ramp.color_ramp.interpolation = interpolation
+    node_separate_rgb = nodes.new(type='ShaderNodeSeparateRGB')
+    node_separate_rgb.location = (-1000, 0)
 
-    if custom_colormap:
+    map_range_r = nodes.new(type='ShaderNodeMapRange')
+    map_range_g = nodes.new(type='ShaderNodeMapRange')
+    map_range_b = nodes.new(type='ShaderNodeMapRange')
+
+    map_range_r.location = (-800, 200)
+    map_range_g.location = (-800, 0)
+    map_range_b.location = (-800, -200)
+
+    if color_range and normalization != 'NONE':
+        min_color, max_color = color_range
+        if normalization == 'AUTO':
+            for i, node in enumerate([map_range_r, map_range_g, map_range_b]):
+                node.inputs['From Min'].default_value = min_color[i]
+                node.inputs['From Max'].default_value = max_color[i]
+        elif normalization == 'GLOBAL':
+            global_min = min(min_color)
+            global_max = max(max_color)
+            for node in [map_range_r, map_range_g, map_range_b]:
+                node.inputs['From Min'].default_value = global_min
+                node.inputs['From Max'].default_value = global_max
+    else:
+        for node in [map_range_r, map_range_g, map_range_b]:
+            node.inputs['From Min'].default_value = 0.0
+            node.inputs['From Max'].default_value = 1.0
+
+    for node in [map_range_r, map_range_g, map_range_b]:
+        node.inputs['To Min'].default_value = 0.0
+        node.inputs['To Max'].default_value = 1.0
+        node.clamp = True
+
+    node_combine_rgb = nodes.new(type='ShaderNodeCombineRGB')
+    node_combine_rgb.location = (-600, 0)
+
+    node_colorramp = nodes.new(type='ShaderNodeValToRGB')
+    node_colorramp.location = (-400, 0)
+    node_colorramp.color_ramp.interpolation = interpolation
+
+    if colormap_name == "CUSTOM":
         colors = custom_colormap
     else:
-        colors = COLORMAPS[colormap_name]
+        colors = COLORMAPS[colormap_name]['colors']
 
-    color_ramp = node_ramp.color_ramp
-    color_ramp.elements.remove(color_ramp.elements[0])
+    if len(colors) != 32:
+        colors = interpolate_colormap(colors, 32)
+
+    colors = list(reversed(colors))
+
+    node_colorramp.color_ramp.elements.remove(node_colorramp.color_ramp.elements[0])
     for i, color_data in enumerate(colors):
-        elem = color_ramp.elements.new(
-            color_data['position'] if custom_colormap else i / (len(colors) - 1))
-        if custom_colormap:
-            color = list(color_data['color'])
-            if len(color) == 3:
-                color.append(1.0)  # Añadir alpha = 1.0 si no está presente
-            elem.color = color
+        if i == 0:
+            elem = node_colorramp.color_ramp.elements[0]
         else:
-            elem.color = [c/255 for c in color_data] + [1]
+            elem = node_colorramp.color_ramp.elements.new(1 - color_data['position'])
+        elem.color = color_data['color'] + (1.0,)  # Añadir alpha = 1.0
+
+    elements = node_colorramp.color_ramp.elements
+    if len(elements) > 2:
+        last_color = elements[-1].color
+        elements[0].color = last_color
+        elements[1].color = last_color
+
+    node_gamma = nodes.new(type='ShaderNodeGamma')
+    node_gamma.inputs[1].default_value = gamma
+    node_gamma.location = (-200, 0)
 
     node_bsdf = nodes.new(type='ShaderNodeBsdfPrincipled')
-    node_output = nodes.new(type='ShaderNodeOutputMaterial')
+    node_bsdf.location = (0, 0)
 
-    links.new(node_attrib.outputs[0], node_ramp.inputs[0])
-    links.new(node_ramp.outputs[0], node_bsdf.inputs[0])
+    node_output = nodes.new(type='ShaderNodeOutputMaterial')
+    node_output.location = (200, 0)
+
+    links.new(node_attrib.outputs[0], node_separate_rgb.inputs[0])
+    
+    for i, map_range in enumerate([map_range_r, map_range_g, map_range_b]):
+        links.new(node_separate_rgb.outputs[i], map_range.inputs[0])
+        links.new(map_range.outputs[0], node_combine_rgb.inputs[i])
+
+    links.new(node_combine_rgb.outputs[0], node_colorramp.inputs[0])
+    links.new(node_colorramp.outputs[0], node_gamma.inputs[0])
+    links.new(node_gamma.outputs[0], node_bsdf.inputs['Base Color'])
     links.new(node_bsdf.outputs[0], node_output.inputs[0])
 
+    logger.info("Material creado y nodos conectados")
     return mat
-
 
 class MATERIAL_OT_create_shader(Operator):
     bl_idname = "material.create_shader"
@@ -188,40 +342,68 @@ class MATERIAL_OT_create_shader(Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     colormap: EnumProperty(
-        items=[(k, k, "") for k in COLORMAPS.keys()] +
-        [('CUSTOM', "Custom", "Use custom ColorRamp")],
-        name="ColorMap",
-        description="Choose a scientific colormap or use custom",
-        default='viridis'
+        name="Colormap",
+        description="Choose the colormap or use custom",
+        items=get_colormap_items,
     )
 
     interpolation: EnumProperty(
-        items=INTERPOLATION_OPTIONS,
         name="Interpolation",
-        description="Choose the interpolation method for the ColorRamp",
-        default='LINEAR'
+        description="Choose the interpolation method",
+        items=INTERPOLATION_OPTIONS,
+        default='CONSTANT'
+    )
+
+    gamma: FloatProperty(
+        name="Gamma",
+        description="Adjust the gamma value",
+        default=2.2,
+        min=0.1,
+        max=5.0
     )
 
     material_name: StringProperty(
         name="Material Name",
-        default="Shader_Generator",
-        description="Name of the new material"
+        description="Name of the new material",
+        default="New Shader"
     )
 
     apply_to_all: BoolProperty(
-        name="Apply to All Mesh Objects",
-        default=True,
-        description="Apply the material to all mesh objects in the scene"
+        name="Apply to All",
+        description="Apply the shader to all mesh objects in the scene",
+        default=False
+    )
+
+    normalization: EnumProperty(
+        name="Normalization",
+        description="Choose the normalization method",
+        items=[
+            ('AUTO', "Auto Per Channel", "Normalize each color channel separately"),
+            ('GLOBAL', "Global", "Use global min and max for all channels"),
+            ('NONE', "None", "Don't normalize"),
+        ],
+        default='AUTO'
     )
 
     def execute(self, context):
-        if self.colormap == 'CUSTOM':
-            custom_colormap = [{"color": list(
-                c.color), "position": c.position} for c in context.scene.custom_colorramp]
-            mat = create_colormap_material(
-                'Custom', self.interpolation, custom_colormap)
+        active_obj = context.active_object
+        if active_obj and active_obj.type == 'MESH':
+            color_range = get_color_range(active_obj)
         else:
-            mat = create_colormap_material(self.colormap, self.interpolation)
+            color_range = None
+
+        custom_colormap = None
+        if self.colormap == "CUSTOM" and context.scene.custom_colorramp:
+            custom_colormap = [{"position": color.position, "color": color.color[:3]} for color in context.scene.custom_colorramp]
+
+        mat = create_colormap_material(
+            self.colormap,
+            self.interpolation,
+            self.gamma,
+            custom_colormap,
+            color_range=color_range,
+            normalization=self.normalization
+        )
 
         mat.name = self.material_name
 
@@ -240,9 +422,9 @@ class MATERIAL_OT_create_shader(Operator):
                     else:
                         obj.data.materials.append(mat)
 
-        self.report({'INFO'}, f"Applied {'custom' if self.colormap == 'CUSTOM' else self.colormap} shader with {self.interpolation} interpolation to {'all mesh objects' if self.apply_to_all else 'selected objects'}")
+        self.report({'INFO'}, f"Applied shader with {self.colormap} colormap, {self.interpolation} interpolation, and gamma {self.gamma} to {'all mesh objects' if self.apply_to_all else 'selected objects'}")
+        logger.info("Shader aplicado exitosamente")
         return {'FINISHED'}
-
 
 class MATERIAL_PT_shader_generator(Panel):
     bl_label = "Shader Generator"
@@ -255,7 +437,11 @@ class MATERIAL_PT_shader_generator(Panel):
         layout = self.layout
         scene = context.scene
 
-        # Sección para la creación de shaders
+        layout.label(text="Import Colormaps", icon='IMPORT')
+        layout.operator(COLORRAMP_OT_import_json.bl_idname, text="Import Scientific Colormaps", icon='FILE_NEW')
+
+        layout.separator()
+
         layout.label(text="Create Shader", icon='NODE_MATERIAL')
         box = layout.box()
         col = box.column(align=True)
@@ -264,13 +450,13 @@ class MATERIAL_PT_shader_generator(Panel):
                           text="Generate Shader", icon='MATERIAL')
         col.prop(op, "colormap", text="Colormap")
         col.prop(op, "interpolation", text="Interpolation")
+        col.prop(op, "gamma", text="Gamma")
         col.prop(op, "material_name", text="Material Name")
         col.prop(op, "apply_to_all", text="Apply to All")
+        col.prop(op, "normalization", text="Normalization")
 
-        # Separador visual
         layout.separator()
 
-        # Sección de Custom ColorRamp
         layout.label(text="Custom ColorRamp", icon='COLOR')
         box = layout.box()
         row = box.row(align=True)
@@ -284,17 +470,14 @@ class MATERIAL_PT_shader_generator(Panel):
             row.prop(color, "color", text=f"Color {i+1}")
             row.prop(color, "position", text="Pos")
 
-        # Separador visual
         layout.separator()
 
-        # Sección de guardado/carga de ColorRamp
         layout.label(text="Save/Load ColorRamp", icon='FILE_FOLDER')
         box = layout.box()
         box.operator(COLORRAMP_OT_save_custom.bl_idname,
                      text="Save ColorRamp", icon='FILE_TICK')
         box.operator(COLORRAMP_OT_load_custom.bl_idname,
                      text="Load ColorRamp", icon='IMPORT')
-
 
 def register():
     bpy.utils.register_class(ColorRampColor)
@@ -303,9 +486,9 @@ def register():
     bpy.utils.register_class(COLORRAMP_OT_remove_color)
     bpy.utils.register_class(COLORRAMP_OT_save_custom)
     bpy.utils.register_class(COLORRAMP_OT_load_custom)
+    bpy.utils.register_class(COLORRAMP_OT_import_json)
     bpy.utils.register_class(MATERIAL_OT_create_shader)
     bpy.utils.register_class(MATERIAL_PT_shader_generator)
-
 
 def unregister():
     del bpy.types.Scene.custom_colorramp
@@ -314,9 +497,9 @@ def unregister():
     bpy.utils.unregister_class(COLORRAMP_OT_remove_color)
     bpy.utils.unregister_class(COLORRAMP_OT_save_custom)
     bpy.utils.unregister_class(COLORRAMP_OT_load_custom)
+    bpy.utils.unregister_class(COLORRAMP_OT_import_json)
     bpy.utils.unregister_class(MATERIAL_OT_create_shader)
     bpy.utils.unregister_class(MATERIAL_PT_shader_generator)
-
 
 if __name__ == "__main__":
     register()
