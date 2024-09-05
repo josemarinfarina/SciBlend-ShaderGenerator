@@ -234,7 +234,7 @@ def get_color_range(obj):
     max_color = tuple(max(c[i] for c in colors) for i in range(3))
     return min_color, max_color
 
-def create_colormap_material(colormap_name, interpolation, gamma, custom_colormap=None, color_range=None, normalization='AUTO'):
+def create_colormap_material(colormap_name, interpolation, gamma, custom_colormap=None, color_range=None, normalization='AUTO', from_min_r=0.0, from_max_r=1.0, from_min_g=0.0, from_max_g=1.0, from_min_b=0.0, from_max_b=1.0):
     logger.info("Creando material con colormap: %s", colormap_name)
     
     mat = bpy.data.materials.new(name=f"Shader_Generator_{colormap_name}")
@@ -272,9 +272,12 @@ def create_colormap_material(colormap_name, interpolation, gamma, custom_colorma
                 node.inputs['From Min'].default_value = global_min
                 node.inputs['From Max'].default_value = global_max
     else:
-        for node in [map_range_r, map_range_g, map_range_b]:
-            node.inputs['From Min'].default_value = 0.0
-            node.inputs['From Max'].default_value = 1.0
+        map_range_r.inputs['From Min'].default_value = from_min_r
+        map_range_r.inputs['From Max'].default_value = from_max_r
+        map_range_g.inputs['From Min'].default_value = from_min_g
+        map_range_g.inputs['From Max'].default_value = from_max_g
+        map_range_b.inputs['From Min'].default_value = from_min_b
+        map_range_b.inputs['From Max'].default_value = from_max_b
 
     for node in [map_range_r, map_range_g, map_range_b]:
         node.inputs['To Min'].default_value = 0.0
@@ -385,6 +388,54 @@ class MATERIAL_OT_create_shader(Operator):
         default='AUTO'
     )
 
+    from_min_r: FloatProperty(
+        name="From Min R",
+        description="From Min value for Red channel",
+        default=0.0,
+        min=0.0,
+        max=1.0
+    )
+
+    from_max_r: FloatProperty(
+        name="From Max R",
+        description="From Max value for Red channel",
+        default=1.0,
+        min=0.0,
+        max=1.0
+    )
+
+    from_min_g: FloatProperty(
+        name="From Min G",
+        description="From Min value for Green channel",
+        default=0.0,
+        min=0.0,
+        max=1.0
+    )
+
+    from_max_g: FloatProperty(
+        name="From Max G",
+        description="From Max value for Green channel",
+        default=1.0,
+        min=0.0,
+        max=1.0
+    )
+
+    from_min_b: FloatProperty(
+        name="From Min B",
+        description="From Min value for Blue channel",
+        default=0.0,
+        min=0.0,
+        max=1.0
+    )
+
+    from_max_b: FloatProperty(
+        name="From Max B",
+        description="From Max value for Blue channel",
+        default=1.0,
+        min=0.0,
+        max=1.0
+    )
+
     def execute(self, context):
         active_obj = context.active_object
         if active_obj and active_obj.type == 'MESH':
@@ -402,7 +453,13 @@ class MATERIAL_OT_create_shader(Operator):
             self.gamma,
             custom_colormap,
             color_range=color_range,
-            normalization=self.normalization
+            normalization=self.normalization,
+            from_min_r=self.from_min_r,
+            from_max_r=self.from_max_r,
+            from_min_g=self.from_min_g,
+            from_max_g=self.from_max_g,
+            from_min_b=self.from_min_b,
+            from_max_b=self.from_max_b
         )
 
         mat.name = self.material_name
@@ -454,6 +511,12 @@ class MATERIAL_PT_shader_generator(Panel):
         col.prop(op, "material_name", text="Material Name")
         col.prop(op, "apply_to_all", text="Apply to All")
         col.prop(op, "normalization", text="Normalization")
+        col.prop(op, "from_min_r", text="From Min R")
+        col.prop(op, "from_max_r", text="From Max R")
+        col.prop(op, "from_min_g", text="From Min G")
+        col.prop(op, "from_max_g", text="From Max G")
+        col.prop(op, "from_min_b", text="From Min B")
+        col.prop(op, "from_max_b", text="From Max B")
 
         layout.separator()
 
