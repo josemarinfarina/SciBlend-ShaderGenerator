@@ -225,16 +225,21 @@ def interpolate_colormap(colors, num_points=32):
     
     return new_colors
 
-def get_color_range(obj):
-    if obj.type != 'MESH' or 'Col' not in obj.data.attributes:
-        return (0, 0, 0), (1, 1, 1)
+def get_color_range(obj, attribute_name):
+    if obj.type != 'MESH' or attribute_name not in obj.data.attributes:
+        return (0, 1)
     
-    colors = [data.color for data in obj.data.attributes['Col'].data]
-    min_color = tuple(min(c[i] for c in colors) for i in range(3))
-    max_color = tuple(max(c[i] for c in colors) for i in range(3))
-    return min_color, max_color
+    attribute = obj.data.attributes[attribute_name]
+    if attribute.data_type == 'FLOAT':
+        values = [data.value for data in attribute.data]
+    elif attribute.data_type == 'FLOAT_VECTOR':
+        values = [data.vector.length for data in attribute.data]
+    else:
+        return (0, 1)
+    
+    return (min(values), max(values))
 
-def create_colormap_material(colormap_name, interpolation, gamma, custom_colormap=None, color_range=None, normalization='AUTO', from_min_r=0.0, from_max_r=1.0, from_min_g=0.0, from_max_g=1.0, from_min_b=0.0, from_max_b=1.0):
+def create_colormap_material(colormap_name, interpolation, gamma, custom_colormap=None, color_range=None, normalization='AUTO', attribute_name="Col"):
     logger.info("Creando material con colormap: %s", colormap_name)
     
     mat = bpy.data.materials.new(name=f"Shader_Generator_{colormap_name}")
@@ -245,50 +250,32 @@ def create_colormap_material(colormap_name, interpolation, gamma, custom_colorma
     nodes.clear()
 
     node_attrib = nodes.new(type='ShaderNodeAttribute')
-    node_attrib.attribute_name = "Col"
-    node_attrib.location = (-1200, 0)
+    node_attrib.attribute_name = attribute_name
+    node_attrib.location = (-600, 0)
 
-    node_separate_rgb = nodes.new(type='ShaderNodeSeparateRGB')
-    node_separate_rgb.location = (-1000, 0)
-
-    map_range_r = nodes.new(type='ShaderNodeMapRange')
-    map_range_g = nodes.new(type='ShaderNodeMapRange')
-    map_range_b = nodes.new(type='ShaderNodeMapRange')
-
-    map_range_r.location = (-800, 200)
-    map_range_g.location = (-800, 0)
-    map_range_b.location = (-800, -200)
+    map_range = nodes.new(type='ShaderNodeMapRange')
+    map_range.location = (-400, 0)
 
     if color_range and normalization != 'NONE':
-        min_color, max_color = color_range
+        min_value, max_value = color_range
         if normalization == 'AUTO':
-            for i, node in enumerate([map_range_r, map_range_g, map_range_b]):
-                node.inputs['From Min'].default_value = min_color[i]
-                node.inputs['From Max'].default_value = max_color[i]
+            map_range.inputs['From Min'].default_value = min_value
+            map_range.inputs['From Max'].default_value = max_value
         elif normalization == 'GLOBAL':
-            global_min = min(min_color)
-            global_max = max(max_color)
-            for node in [map_range_r, map_range_g, map_range_b]:
-                node.inputs['From Min'].default_value = global_min
-                node.inputs['From Max'].default_value = global_max
+            global_min = min(min_value)
+            global_max = max(max_value)
+            map_range.inputs['From Min'].default_value = global_min
+            map_range.inputs['From Max'].default_value = global_max
     else:
-        map_range_r.inputs['From Min'].default_value = from_min_r
-        map_range_r.inputs['From Max'].default_value = from_max_r
-        map_range_g.inputs['From Min'].default_value = from_min_g
-        map_range_g.inputs['From Max'].default_value = from_max_g
-        map_range_b.inputs['From Min'].default_value = from_min_b
-        map_range_b.inputs['From Max'].default_value = from_max_b
+        map_range.inputs['From Min'].default_value = 0.0
+        map_range.inputs['From Max'].default_value = 1.0
 
-    for node in [map_range_r, map_range_g, map_range_b]:
-        node.inputs['To Min'].default_value = 0.0
-        node.inputs['To Max'].default_value = 1.0
-        node.clamp = True
-
-    node_combine_rgb = nodes.new(type='ShaderNodeCombineRGB')
-    node_combine_rgb.location = (-600, 0)
+    map_range.inputs['To Min'].default_value = 0.0
+    map_range.inputs['To Max'].default_value = 1.0
+    map_range.clamp = True
 
     node_colorramp = nodes.new(type='ShaderNodeValToRGB')
-    node_colorramp.location = (-400, 0)
+    node_colorramp.location = (-200, 0)
     node_colorramp.color_ramp.interpolation = interpolation
 
     if colormap_name == "CUSTOM":
@@ -299,39 +286,40 @@ def create_colormap_material(colormap_name, interpolation, gamma, custom_colorma
     if len(colors) != 32:
         colors = interpolate_colormap(colors, 32)
 
-    colors = list(reversed(colors))
+    # Eliminamos la inversión de colores
+    # colors = list(reversed(colors))
 
-    node_colorramp.color_ramp.elements.remove(node_colorramp.color_ramp.elements[0])
+    # Eliminamos todos los elementos existentes del ColorRamp
+    for i in range(len(node_colorramp.color_ramp.elements) - 1, 0, -1):
+        node_colorramp.color_ramp.elements.remove(node_colorramp.color_ramp.elements[i])
+
+    # Añadimos los nuevos elementos en el orden correcto
     for i, color_data in enumerate(colors):
         if i == 0:
             elem = node_colorramp.color_ramp.elements[0]
         else:
-            elem = node_colorramp.color_ramp.elements.new(1 - color_data['position'])
+            elem = node_colorramp.color_ramp.elements.new(color_data['position'])
         elem.color = color_data['color'] + (1.0,)  # Añadir alpha = 1.0
 
-    elements = node_colorramp.color_ramp.elements
-    if len(elements) > 2:
-        last_color = elements[-1].color
-        elements[0].color = last_color
-        elements[1].color = last_color
+    # Eliminamos el código que cambiaba los colores de los primeros elementos
+    # elements = node_colorramp.color_ramp.elements
+    # if len(elements) > 2:
+    #     last_color = elements[-1].color
+    #     elements[0].color = last_color
+    #     elements[1].color = last_color
 
     node_gamma = nodes.new(type='ShaderNodeGamma')
     node_gamma.inputs[1].default_value = gamma
-    node_gamma.location = (-200, 0)
+    node_gamma.location = (0, 0)
 
     node_bsdf = nodes.new(type='ShaderNodeBsdfPrincipled')
-    node_bsdf.location = (0, 0)
+    node_bsdf.location = (200, 0)
 
     node_output = nodes.new(type='ShaderNodeOutputMaterial')
-    node_output.location = (200, 0)
+    node_output.location = (400, 0)
 
-    links.new(node_attrib.outputs[0], node_separate_rgb.inputs[0])
-    
-    for i, map_range in enumerate([map_range_r, map_range_g, map_range_b]):
-        links.new(node_separate_rgb.outputs[i], map_range.inputs[0])
-        links.new(map_range.outputs[0], node_combine_rgb.inputs[i])
-
-    links.new(node_combine_rgb.outputs[0], node_colorramp.inputs[0])
+    links.new(node_attrib.outputs[0], map_range.inputs[0])
+    links.new(map_range.outputs[0], node_colorramp.inputs[0])
     links.new(node_colorramp.outputs[0], node_gamma.inputs[0])
     links.new(node_gamma.outputs[0], node_bsdf.inputs['Base Color'])
     links.new(node_bsdf.outputs[0], node_output.inputs[0])
@@ -388,58 +376,16 @@ class MATERIAL_OT_create_shader(Operator):
         default='AUTO'
     )
 
-    from_min_r: FloatProperty(
-        name="From Min R",
-        description="From Min value for Red channel",
-        default=0.0,
-        min=0.0,
-        max=1.0
-    )
-
-    from_max_r: FloatProperty(
-        name="From Max R",
-        description="From Max value for Red channel",
-        default=1.0,
-        min=0.0,
-        max=1.0
-    )
-
-    from_min_g: FloatProperty(
-        name="From Min G",
-        description="From Min value for Green channel",
-        default=0.0,
-        min=0.0,
-        max=1.0
-    )
-
-    from_max_g: FloatProperty(
-        name="From Max G",
-        description="From Max value for Green channel",
-        default=1.0,
-        min=0.0,
-        max=1.0
-    )
-
-    from_min_b: FloatProperty(
-        name="From Min B",
-        description="From Min value for Blue channel",
-        default=0.0,
-        min=0.0,
-        max=1.0
-    )
-
-    from_max_b: FloatProperty(
-        name="From Max B",
-        description="From Max value for Blue channel",
-        default=1.0,
-        min=0.0,
-        max=1.0
+    attribute_name: StringProperty(
+        name="Attribute Name",
+        description="Name of the attribute to map",
+        default="Col"
     )
 
     def execute(self, context):
         active_obj = context.active_object
         if active_obj and active_obj.type == 'MESH':
-            color_range = get_color_range(active_obj)
+            color_range = get_color_range(active_obj, self.attribute_name)
         else:
             color_range = None
 
@@ -454,12 +400,7 @@ class MATERIAL_OT_create_shader(Operator):
             custom_colormap,
             color_range=color_range,
             normalization=self.normalization,
-            from_min_r=self.from_min_r,
-            from_max_r=self.from_max_r,
-            from_min_g=self.from_min_g,
-            from_max_g=self.from_max_g,
-            from_min_b=self.from_min_b,
-            from_max_b=self.from_max_b
+            attribute_name=self.attribute_name
         )
 
         mat.name = self.material_name
@@ -511,12 +452,7 @@ class MATERIAL_PT_shader_generator(Panel):
         col.prop(op, "material_name", text="Material Name")
         col.prop(op, "apply_to_all", text="Apply to All")
         col.prop(op, "normalization", text="Normalization")
-        col.prop(op, "from_min_r", text="From Min R")
-        col.prop(op, "from_max_r", text="From Max R")
-        col.prop(op, "from_min_g", text="From Min G")
-        col.prop(op, "from_max_g", text="From Max G")
-        col.prop(op, "from_min_b", text="From Min B")
-        col.prop(op, "from_max_b", text="From Max B")
+        col.prop(op, "attribute_name", text="Attribute Name")
 
         layout.separator()
 

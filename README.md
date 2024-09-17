@@ -1,6 +1,6 @@
-# SciBlend: Shader Generator for Blender
+# SciBlend: Shader Generator for Blender v.2.0.0
 
-This script is an add-on for Blender 4.2 that serves as a powerful shader generator, particularly useful for scientific visualizations. It allows users to create and apply customizable scientific ColorRamps to 3D objects, enhancing the visualization of data imported from Paraview or other scientific sources.
+This Blender add-on serves as a powerful shader generator, specifically designed for scientific visualizations. It allows users to create and apply customizable scientific ColorRamps to 3D objects, enhancing the visualization of data from various sources, including VTK files, Paraview exports, and any mesh with custom attributes.
 
 ![SciBlend Shader Example](media/1.png)
 
@@ -33,6 +33,7 @@ Before installing Blender and the add-on, ensure that you meet the following req
 
 ## Features
 
+- **Universal Attribute Mapping**: Apply shaders to any mesh attribute, not just colors. This makes it ideal for visualizing various scientific data types, including scalar fields, vector magnitudes, and more.
 - **Scientific ColorRamps**: Choose from a variety of pre-defined scientific ColorRamps (viridis, plasma, inferno, etc.).
 - **Custom Shaders**: Create, save, and load your own custom shaders with specialized ColorRamps.
 - **Interpolation Options**: Select from different interpolation methods for smooth color transitions.
@@ -60,7 +61,7 @@ Before installing Blender and the add-on, ensure that you meet the following req
 
 ## Usage
 
-Once the add-on is installed and enabled, you can use it to generate and apply scientific shaders in Blender:
+After installation, the add-on can be used to generate and apply scientific shaders to any mesh with attributes:
 
 1. **Accessing the Add-on Panel**:
    - Open Blender and switch to the `3D Viewport`.
@@ -68,6 +69,7 @@ Once the add-on is installed and enabled, you can use it to generate and apply s
 
 2. **Creating a Shader**:
    - Choose a predefined scientific ColorRamp or select 'Custom'.
+   - Type the exact name of the attribute you want to visualize.
    - For custom shaders, use the '+' and '-' buttons to add or remove color stops.
    - Adjust colors and positions of each stop in the custom ColorRamp.
 
