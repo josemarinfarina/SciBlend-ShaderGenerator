@@ -1,4 +1,4 @@
-# SciBlend: Shader Generator for Blender v.2.0.0
+# SciBlend: Shader Generator for Blender v.2.2.0
 
 This Blender add-on serves as a powerful shader generator, specifically designed for scientific visualizations. It allows users to create and apply customizable scientific ColorRamps to 3D objects, enhancing the visualization of data from various sources, including VTK files, Paraview exports, and any mesh with custom attributes.
 
@@ -57,7 +57,6 @@ Before installing Blender and the add-on, ensure that you meet the following req
     - Access the add-on from the `View3D` panel under the `Shader Generator` tab.
     - Configure your shaders and apply them to your scientific data visualizations.
   
-![1](https://github.com/user-attachments/assets/53f7eafa-34c7-49f7-8c41-68d4c20dd8da)
 
 ## Usage
 
