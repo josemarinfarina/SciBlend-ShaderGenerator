@@ -414,6 +414,23 @@ class MATERIAL_OT_create_shader(Operator):
                         obj.data.materials[0] = mat
                     else:
                         obj.data.materials.append(mat)
+                    
+                    if obj.modifiers:
+                        for modifier in obj.modifiers:
+                            if modifier.type == 'NODES' and modifier.node_group:
+                                def update_set_material_nodes(node_group):
+                                    for node in node_group.nodes:
+                                        if node.type == 'SET_MATERIAL':
+                                            if mat not in obj.data.materials[:]:
+                                                obj.data.materials.append(mat)
+                                            if hasattr(node, 'inputs') and 'Material' in node.inputs:
+                                                node.inputs['Material'].default_value = mat
+                                            elif hasattr(node, 'material_index'):
+                                                node.material_index = obj.data.materials.find(mat.name)
+                                        elif node.type == 'GROUP' and node.node_tree:
+                                            update_set_material_nodes(node.node_tree)
+                                
+                                update_set_material_nodes(modifier.node_group)
         else:
             for obj in context.selected_objects:
                 if obj.type == 'MESH':
@@ -421,6 +438,23 @@ class MATERIAL_OT_create_shader(Operator):
                         obj.data.materials[0] = mat
                     else:
                         obj.data.materials.append(mat)
+                    
+                    if obj.modifiers:
+                        for modifier in obj.modifiers:
+                            if modifier.type == 'NODES' and modifier.node_group:
+                                def update_set_material_nodes(node_group):
+                                    for node in node_group.nodes:
+                                        if node.type == 'SET_MATERIAL':
+                                            if mat not in obj.data.materials[:]:
+                                                obj.data.materials.append(mat)
+                                            if hasattr(node, 'inputs') and 'Material' in node.inputs:
+                                                node.inputs['Material'].default_value = mat
+                                            elif hasattr(node, 'material_index'):
+                                                node.material_index = obj.data.materials.find(mat.name)
+                                        elif node.type == 'GROUP' and node.node_tree:
+                                            update_set_material_nodes(node.node_tree)
+                                
+                                update_set_material_nodes(modifier.node_group)
 
         self.report({'INFO'}, f"Applied shader with {self.colormap} colormap, {self.interpolation} interpolation, and gamma {self.gamma} to {'all mesh objects' if self.apply_to_all else 'selected objects'}")
         logger.info("Shader aplicado exitosamente")
