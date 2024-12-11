@@ -225,7 +225,25 @@ def interpolate_colormap(colors, num_points=32):
     
     return new_colors
 
-def get_color_range(obj, attribute_name):
+def get_color_range(obj, attribute_name, normalization='AUTO'):
+    if normalization == 'GLOBAL':
+        # Buscar el atributo en todos los objetos de la escena
+        all_values = []
+        for obj in bpy.data.objects:
+            if obj.type == 'MESH' and attribute_name in obj.data.attributes:
+                attribute = obj.data.attributes[attribute_name]
+                if attribute.data_type == 'FLOAT':
+                    values = [data.value for data in attribute.data]
+                    all_values.extend(values)
+                elif attribute.data_type == 'FLOAT_VECTOR':
+                    values = [data.vector.length for data in attribute.data]
+                    all_values.extend(values)
+        
+        if all_values:
+            return (min(all_values), max(all_values))
+        return (0, 1)
+    
+    # Comportamiento original para AUTO y NONE
     if obj.type != 'MESH' or attribute_name not in obj.data.attributes:
         return (0, 1)
     
@@ -258,14 +276,9 @@ def create_colormap_material(colormap_name, interpolation, gamma, custom_colorma
 
     if color_range and normalization != 'NONE':
         min_value, max_value = color_range
-        if normalization == 'AUTO':
+        if normalization == 'AUTO' or normalization == 'GLOBAL':
             map_range.inputs['From Min'].default_value = min_value
             map_range.inputs['From Max'].default_value = max_value
-        elif normalization == 'GLOBAL':
-            global_min = min(min_value)
-            global_max = max(max_value)
-            map_range.inputs['From Min'].default_value = global_min
-            map_range.inputs['From Max'].default_value = global_max
     else:
         map_range.inputs['From Min'].default_value = 0.0
         map_range.inputs['From Max'].default_value = 1.0
@@ -286,14 +299,9 @@ def create_colormap_material(colormap_name, interpolation, gamma, custom_colorma
     if len(colors) != 32:
         colors = interpolate_colormap(colors, 32)
 
-    # Eliminamos la inversión de colores
-    # colors = list(reversed(colors))
-
-    # Eliminamos todos los elementos existentes del ColorRamp
     for i in range(len(node_colorramp.color_ramp.elements) - 1, 0, -1):
         node_colorramp.color_ramp.elements.remove(node_colorramp.color_ramp.elements[i])
 
-    # Añadimos los nuevos elementos en el orden correcto
     for i, color_data in enumerate(colors):
         if i == 0:
             elem = node_colorramp.color_ramp.elements[0]
@@ -301,12 +309,6 @@ def create_colormap_material(colormap_name, interpolation, gamma, custom_colorma
             elem = node_colorramp.color_ramp.elements.new(color_data['position'])
         elem.color = color_data['color'] + (1.0,)  # Añadir alpha = 1.0
 
-    # Eliminamos el código que cambiaba los colores de los primeros elementos
-    # elements = node_colorramp.color_ramp.elements
-    # if len(elements) > 2:
-    #     last_color = elements[-1].color
-    #     elements[0].color = last_color
-    #     elements[1].color = last_color
 
     node_gamma = nodes.new(type='ShaderNodeGamma')
     node_gamma.inputs[1].default_value = gamma
@@ -385,7 +387,7 @@ class MATERIAL_OT_create_shader(Operator):
     def execute(self, context):
         active_obj = context.active_object
         if active_obj and active_obj.type == 'MESH':
-            color_range = get_color_range(active_obj, self.attribute_name)
+            color_range = get_color_range(active_obj, self.attribute_name, self.normalization)
         else:
             color_range = None
 
