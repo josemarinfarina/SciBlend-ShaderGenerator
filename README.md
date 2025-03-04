@@ -2,7 +2,10 @@
 
 This Blender add-on serves as a powerful shader generator, specifically designed for scientific visualizations. It allows users to create and apply customizable scientific ColorRamps to 3D objects, enhancing the visualization of data from various sources, including VTK files, Paraview exports, and any mesh with custom attributes.
 
-![SciBlend Shader Example](media/1.png)
+![SciBlend Shader Example](media/shader.png)
+*Viewport screenshot showing two hearts meshes being rendered by Cycles Render with different shaders: Black Blue and White on the left, and Inferno on the right side, driven by the displacement_Magnitude point attribute.*
+
+
 
 ## Table of Contents
 
